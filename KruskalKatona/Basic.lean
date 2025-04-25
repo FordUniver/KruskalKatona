@@ -11,17 +11,33 @@ open Nat Finset
 #check choose_le_choose
 #check choose_eq_zero_of_lt
 
+#check choose_one_right
+#check choose_symm_add
+
 set_option linter.unusedTactic false
 
-theorem le_choose {a b : ℕ} (h₁ : 1 ≤ b) (h₂ : b ≤ a) : a ≤ choose (a + 1) b := by
-  sorry
 
+theorem succ_choose_self (a: ℕ) : choose (a + 1) a = a + 1 := by
+  rw [choose_symm_add]
+  exact choose_one_right (a + 1)
 
-theorem choose_lt_choose {a b c: ℕ} (h₁ : c ≤ a) (h₂  : a < b) : choose a c < choose b c := by
-  sorry
+theorem choose_ge_one {a b : ℕ} (h : a ≥ b) : choose a b ≥ 1 := by
+  induction' b with b' ih generalizing a
+  · rw [choose_zero_right a]
+  · obtain ⟨c, c_eq_succ_a⟩ := exists_eq_add_one.mpr (one_le_of_lt h)
+    simp_all [c_eq_succ_a, choose_succ_succ, le_add_right_of_le, ih]
 
+example {a c: ℕ} (h₁ : c ≤ a) : choose a c.succ < choose a.succ c.succ := by
+  rw [choose_succ_succ]
+  exact Nat.lt_add_of_pos_left (choose_ge_one h₁)
 
-theorem plus_one_choose_eq (a: ℕ) : choose (a + 1) a = a := by
+theorem choose_lt_of_lt {a b c: ℕ} (h₁ : c.succ ≤ a) (h₂ : a < b) : choose a c.succ < choose b c.succ := by
+  obtain ⟨k, zero_lt_k, a_plus_k_eq_b⟩ := exists_pos_add_of_lt' h₂
+  rw [a_plus_k_eq_b.symm]
+  have succ_lb := choose_le_choose c.succ (le_of_le_of_eq h₂ a_plus_k_eq_b.symm)
+  exact Nat.lt_of_lt_of_le (Nat.lt_add_of_pos_left (choose_ge_one (le_of_succ_le h₁))) succ_lb
+
+theorem succ_le_succ_choose {a b : ℕ} (h : b.succ ≤ a) : a + 1 ≤ choose (a + 1) b.succ := by
   sorry
 
 
@@ -40,15 +56,17 @@ lemma exists_max_choose_le {m k : ℕ} (one_le_m : 1 ≤ m) (one_le_k : 1 ≤ k)
         -- todo: this case distinction is dumb...
         by_cases y_eq_k_one? : y = k + 1
         · simp [y_eq_k_one?] at *
-        · calc k = choose (k + 1) k    := (plus_one_choose_eq k).symm
-               _ < choose (k + 2) k    := choose_lt_choose (le_add_right k 1) (lt_add_one (k + 1))
+        · calc k < k + 1               := lt_add_one k
+               _ = choose (k + 1) k    := (succ_choose_self k).symm
+               _ < choose (k + 2) k    := choose_lt_of_lt (le_add_right k 1) (lt_add_one (k + 1))
                _ <= choose y k         := choose_le_choose k (by
-                                            by_contra y_eq_k_one
+                                            by_contra! y_eq_k_one
                                             push_neg at y_eq_k_one
                                             exact y_eq_k_one? (Nat.eq_of_le_of_lt_succ y_gt_k y_eq_k_one))
 
       · calc m < k                     := lt_of_le_of_ne k_ge_m? m_eq_k?
-             _ = choose (k + 1) k      := (plus_one_choose_eq k).symm
+             _ < k + 1                 := lt_add_one k
+             _ = choose (k + 1) k      := (succ_choose_self k).symm
              _ ≤ choose y k            := choose_le_choose k y_gt_k
 
   · push_neg at k_ge_m?
@@ -60,7 +78,8 @@ lemma exists_max_choose_le {m k : ℕ} (one_le_m : 1 ≤ m) (one_le_k : 1 ≤ k)
         intro s s_in_S
         by_contra! m_one_lt_s
 
-        have := calc m ≤ (m + 1).choose k   := le_choose (one_le_k) (le_of_succ_le k_ge_m?)
+        have := calc m < m + 1              := lt_add_one m
+             _ ≤ (m + 1).choose k           := succ_le_succ_choose (one_le_k) (le_of_succ_le k_ge_m?)
              _ < s.choose k                 := choose_lt_choose (le_add_right_of_le (le_of_succ_le k_ge_m?)) m_one_lt_s
              _ ≤ m                          := s_in_S
 
