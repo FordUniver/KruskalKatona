@@ -11,42 +11,91 @@ open Nat Finset
 #check choose_le_choose
 #check choose_eq_zero_of_lt
 
+set_option linter.unusedTactic false
 
--- can we not explicitly construct x?
+theorem le_choose {a b : ℕ} (h₁ : 1 ≤ b) (h₂ : b ≤ a) : a ≤ choose (a + 1) b := by
+  sorry
+
+
+theorem choose_lt_choose {a b c: ℕ} (h₁ : c ≤ a) (h₂  : a < b) : choose a c < choose b c := by
+  sorry
+
+
+theorem plus_one_choose_eq (a: ℕ) : choose (a + 1) a = a := by
+  sorry
+
+
 lemma exists_max_choose_le {m k : ℕ} (one_le_m : 1 ≤ m) (one_le_k : 1 ≤ k):
     ∃ x : ℕ, (x.choose k) ≤ m ∧ ∀ y > x, m < (y.choose k) := by
 
-  let S := {i ∈ Finset.range m | Nat.choose i k ≤ m}
+  by_cases k_ge_m? : k ≥ m
+  · use k
+    constructor
+    · simp [one_le_m]
+    · intro y y_gt_k
 
-  have zero_choose_k_le_m := le_of_eq_of_le (choose_eq_zero_iff.mpr one_le_k) (Nat.zero_le m)
-  have zero_in_S: 0 ∈ S := Finset.mem_filter.mpr ⟨mem_range.mpr one_le_m, zero_choose_k_le_m⟩
+      by_cases m_eq_k? : m = k
+      · simp [m_eq_k?] at *
 
-  have S_nonempty : S.Nonempty := Set.nonempty_of_mem zero_in_S
+        -- todo: this case distinction is dumb...
+        by_cases y_eq_k_one? : y = k + 1
+        · simp [y_eq_k_one?] at *
+        · calc k = choose (k + 1) k    := (plus_one_choose_eq k).symm
+               _ < choose (k + 2) k    := choose_lt_choose (le_add_right k 1) (lt_add_one (k + 1))
+               _ <= choose y k         := choose_le_choose k (by
+                                            by_contra y_eq_k_one
+                                            push_neg at y_eq_k_one
+                                            exact y_eq_k_one? (Nat.eq_of_le_of_lt_succ y_gt_k y_eq_k_one))
 
-  let x := max' S S_nonempty
+      · calc m < k                     := lt_of_le_of_ne k_ge_m? m_eq_k?
+             _ = choose (k + 1) k      := (plus_one_choose_eq k).symm
+             _ ≤ choose y k            := choose_le_choose k y_gt_k
 
-  have x_choose_k_le_mn : x.choose k ≤ m := (Finset.mem_filter.mp (max'_mem S S_nonempty)).right
+  · push_neg at k_ge_m?
+    let S := {i | choose i k ≤ m}
 
-  use x
+    have : S.Finite := by
+      have : BddAbove S := by
+        use m + 1
+        intro s s_in_S
+        by_contra! m_one_lt_s
 
-  constructor
-  · exact x_choose_k_le_mn
-  · intro y y_gt_x
-    have y_not_in_S : y ∉ S := fun hc => (lt_self_iff_false y).mp (lt_of_le_of_lt (le_max' S y hc) y_gt_x)
+        have := calc m ≤ (m + 1).choose k   := le_choose (one_le_k) (le_of_succ_le k_ge_m?)
+             _ < s.choose k                 := choose_lt_choose (le_add_right_of_le (le_of_succ_le k_ge_m?)) m_one_lt_s
+             _ ≤ m                          := s_in_S
 
-    by_cases y_le_m : y < m
-    · exact gt_of_not_le (fun hc => y_not_in_S (Finset.mem_filter.mpr ⟨mem_range.mpr y_le_m, hc⟩))
-    · push_neg at y_le_m
-      have : m.choose 1 ≤ m.choose k := by sorry -- monotonicity!
-      have : m ≤ m.choose k := le_of_eq_of_le ((choose_one_right m).symm) this
-      sorry
+        exact (lt_self_iff_false m).mp this
+
+      exact Set.finite_iff_bddAbove.mpr this
+
+    have := this.fintype
+
+    have zero_choose_k_le_m := le_of_eq_of_le (choose_eq_zero_iff.mpr one_le_k) (Nat.zero_le m)
+    have zero_in_S: 0 ∈ S.toFinset := Set.mem_toFinset.mpr zero_choose_k_le_m
+    have S_nonempty : S.toFinset.Nonempty := Set.nonempty_of_mem zero_in_S
+
+    let x := max' S.toFinset S_nonempty
+    use x
+
+    constructor
+
+    · have := Set.mem_toFinset.mp (max'_mem S.toFinset S_nonempty)
+      exact this -- why???
+
+    · intro y y_gt_x
+      have : ¬ choose y k ≤ m := by
+        by_contra hc
+        have : y ∈ S.toFinset := Set.mem_toFinset.mpr hc
+        have : y ≤ x := le_max' S.toFinset y this
+        have : y < y := Nat.lt_of_le_of_lt this y_gt_x
+        exact (lt_self_iff_false y).mp this
+
+      exact gt_of_not_le this
 
 
 
-
-
-lemma cascade {m k : ℕ} (one_le_m : 1 ≤ m) (one_le_k : 1 ≤ k) : ∃ s : ℕ , ∃ a : ℕ → ℕ, 1 ≤ s ∧ s ≤ k ∧
-      m = ∑ i ∈ Icc s k, (a i).choose i := by
+lemma cascade {m k : ℕ} (one_le_m : 1 ≤ m) (one_le_k : 1 ≤ k) :
+    ∃ s : ℕ , ∃ a : ℕ → ℕ, 1 ≤ s ∧ s ≤ k ∧ m = ∑ i ∈ Icc s k, (a i).choose i := by
   induction' k with k ih generalizing m
 
   -- Induction base
