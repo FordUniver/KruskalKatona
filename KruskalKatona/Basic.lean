@@ -111,67 +111,54 @@ lemma exists_max_choose_le {m k : ℕ} (one_le_m : 1 ≤ m) (one_le_k : 1 ≤ k)
 
       exact gt_of_not_le this
 
-
-
 lemma cascade {m k : ℕ} (one_le_m : 1 ≤ m) (one_le_k : 1 ≤ k) :
-    ∃ s : ℕ , ∃ a : ℕ → ℕ, 1 ≤ s ∧ s ≤ k ∧ m = ∑ i ∈ Icc s k, (a i).choose i := by
-  induction' k with k ih generalizing m
+    ∃ s, ∃ a : ℕ → ℕ, m = ∑ i ∈ Icc s k, (a i).choose i ∧ 1 ≤ s ∧ s ≤ k := by
 
-  -- Induction base
-  · contradiction
+  induction' one_le_k with k one_le_k ih generalizing m
 
-  -- Induction step
-  · obtain ⟨x, x_choose_k_le_m, x_max⟩ := exists_max_choose_le one_le_m one_le_k
+  -- Inductive start
+  · use 1, (fun _ => m)
+    simp [sum_attach]
+
+  -- Inductive step
+  · obtain ⟨x, x_choose_k_le_m, x_max⟩ := exists_max_choose_le one_le_m (Nat.le_add_left 1 k)
 
     by_cases m_eq_x : x.choose (k + 1) = m
 
     -- Case 1: m = x.choose (k + 1)
     · use k + 1, fun _ => x
-      exact ⟨one_le_k, by rfl, by simp [m_eq_x]⟩
+      simp [sum_attach, m_eq_x]
 
     -- Case 2: m < x.choose (k + 1)
     · have x_choose_k_lt_m := lt_of_le_of_ne x_choose_k_le_m m_eq_x
       let m' := m - x.choose (k + 1)
       have one_le_m' : 1 ≤ m':= Nat.le_sub_of_add_le' x_choose_k_lt_m
 
-      -- instead the induction should just start at 1???
-      have k_ge_one : k ≥ 1 := by
-        by_contra hc
+      obtain ⟨s, a', m'_eq_sum, one_le_s, s_le_k⟩ := ih one_le_m'
 
-        have x_one_choose_k_one_le_m : (x + 1).choose (k + 1) ≤ m := by
-          simp [Nat.eq_zero_of_not_pos hc] at *
-          exact x_choose_k_lt_m
+      set a := fun i => if i = k + 1 then x else a' i with a_def
 
-        obtain m_lt_x_one_choose_k_one := x_max (x + 1) (by simp)
+      use s, a
 
-        have m_lt_m := lt_of_lt_of_le m_lt_x_one_choose_k_one x_one_choose_k_one_le_m
-        exact (lt_self_iff_false m).mp m_lt_m
-      -----------
-
-      replace ih := ih one_le_m' k_ge_one
-
-      obtain ⟨s, a, one_le_s, s_le_k, m'_eq_sum⟩ := ih
-      use s, fun i => if i = k + 1 then x else a i
       constructor
-      · exact one_le_s
-      · constructor
-        · exact le_add_right_of_le s_le_k
-        · have icc_union : Icc s (k + 1) = (Icc s k) ∪ {k + 1} := by
-            ext x
-            by_cases x_eq_k_one : x = k+1
-            all_goals simp [x_eq_k_one]
-            · exact le_add_right_of_le s_le_k
-            · exact fun _ => ⟨fun a => le_of_lt_succ (Nat.lt_of_le_of_ne a x_eq_k_one), fun a => le_add_right_of_le a⟩
+      · have icc_union : Icc s (k + 1) = (Icc s k) ∪ {k + 1} := by
+          ext x
+          by_cases x_eq_k_one : x = k+1
+          all_goals simp [x_eq_k_one]
+          · exact le_add_right_of_le s_le_k
+          · exact fun _ => ⟨fun a => le_of_lt_succ (Nat.lt_of_le_of_ne a x_eq_k_one), fun a => le_add_right_of_le a⟩
 
-          have icc_disjoint : Disjoint (Icc s k) {k + 1} := by simp
+        have icc_disjoint : Disjoint (Icc s k) {k + 1} := by simp
 
-          simp [icc_union, Finset.sum_union icc_disjoint]
+        have xyz : ∀ i ∈ Icc s k, (a i).choose i = (a' i).choose i := by
+          intro i h
+          have : i ≠ k + 1:= fun hc => (ne_of_lt (mem_Icc.mp (hc ▸ h)).right) rfl
+          simp [this, a_def]
 
-          have : ∀ i ∈ Icc s k, (if i = k + 1 then x else a i).choose i = (a i).choose i := by
-            intro i h
-            have : i ≠ k + 1:= fun hc => (ne_of_lt (mem_Icc.mp (hc ▸ h)).right) rfl
-            simp [this]
+        have foo : m = m' + x.choose (k + 1) := by exact (Nat.sub_eq_iff_eq_add x_choose_k_le_m).mp rfl
 
-          simp [sum_congr rfl this, m'_eq_sum.symm]
+        have bar : a (k + 1) = x := by exact if_pos rfl
 
-          exact (Nat.sub_eq_iff_eq_add x_choose_k_le_m).mp rfl
+        simp [icc_union, Finset.sum_union icc_disjoint, foo, bar, m'_eq_sum, sum_congr rfl xyz]
+
+      · exact ⟨one_le_s, le_succ_of_le s_le_k⟩
