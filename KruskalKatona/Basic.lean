@@ -10,6 +10,7 @@ open Nat Finset
 #check choose_le_add
 #check choose_le_choose
 #check choose_eq_zero_of_lt
+#check choose_succ_self_right
 
 #check choose_one_right
 #check choose_symm_add
@@ -17,9 +18,7 @@ open Nat Finset
 set_option linter.unusedTactic false
 
 
-theorem succ_choose_self (a: ℕ) : choose (a + 1) a = a + 1 := by
-  rw [choose_symm_add]
-  exact choose_one_right (a + 1)
+theorem choose_ge_one_of_ge_one {a b : ℕ} (h : a ≥ 1) : choose a b ≥ 1 := by sorry
 
 theorem choose_ge_one {a b : ℕ} (h : a ≥ b) : choose a b ≥ 1 := by
   induction' b with b' ih generalizing a
@@ -37,128 +36,104 @@ theorem choose_lt_of_lt {a b c: ℕ} (h₁ : c.succ ≤ a) (h₂ : a < b) : choo
   have succ_lb := choose_le_choose c.succ (le_of_le_of_eq h₂ a_plus_k_eq_b.symm)
   exact Nat.lt_of_lt_of_le (Nat.lt_add_of_pos_left (choose_ge_one (le_of_succ_le h₁))) succ_lb
 
-theorem succ_le_succ_choose {a b : ℕ} (h : b.succ ≤ a) : a + 1 ≤ choose (a + 1) b.succ := by
-  sorry
-
-
-lemma exists_max_choose_le {m k : ℕ} (one_le_m : 1 ≤ m) (one_le_k : 1 ≤ k):
-    ∃ x : ℕ, (x.choose k) ≤ m ∧ ∀ y > x, m < (y.choose k) := by
-
-  by_cases k_ge_m? : k ≥ m
-  · use k
-    constructor
-    · simp [one_le_m]
-    · intro y y_gt_k
-
-      by_cases m_eq_k? : m = k
-      · simp [m_eq_k?] at *
-
-        -- todo: this case distinction is dumb...
-        by_cases y_eq_k_one? : y = k + 1
-        · simp [y_eq_k_one?] at *
-        · calc k < k + 1               := lt_add_one k
-               _ = choose (k + 1) k    := (succ_choose_self k).symm
-               _ < choose (k + 2) k    := choose_lt_of_lt (le_add_right k 1) (lt_add_one (k + 1))
-               _ <= choose y k         := choose_le_choose k (by
-                                            by_contra! y_eq_k_one
-                                            push_neg at y_eq_k_one
-                                            exact y_eq_k_one? (Nat.eq_of_le_of_lt_succ y_gt_k y_eq_k_one))
-
-      · calc m < k                     := lt_of_le_of_ne k_ge_m? m_eq_k?
-             _ < k + 1                 := lt_add_one k
-             _ = choose (k + 1) k      := (succ_choose_self k).symm
-             _ ≤ choose y k            := choose_le_choose k y_gt_k
-
-  · push_neg at k_ge_m?
-    let S := {i | choose i k ≤ m}
-
-    have : S.Finite := by
-      have : BddAbove S := by
-        use m + 1
-        intro s s_in_S
-        by_contra! m_one_lt_s
-
-        have := calc m < m + 1              := lt_add_one m
-             _ ≤ (m + 1).choose k           := succ_le_succ_choose (one_le_k) (le_of_succ_le k_ge_m?)
-             _ < s.choose k                 := choose_lt_choose (le_add_right_of_le (le_of_succ_le k_ge_m?)) m_one_lt_s
-             _ ≤ m                          := s_in_S
-
-        exact (lt_self_iff_false m).mp this
-
-      exact Set.finite_iff_bddAbove.mpr this
-
-    have := this.fintype
-
-    have zero_choose_k_le_m := le_of_eq_of_le (choose_eq_zero_iff.mpr one_le_k) (Nat.zero_le m)
-    have zero_in_S: 0 ∈ S.toFinset := Set.mem_toFinset.mpr zero_choose_k_le_m
-    have S_nonempty : S.toFinset.Nonempty := Set.nonempty_of_mem zero_in_S
-
-    let x := max' S.toFinset S_nonempty
-    use x
-
-    constructor
-
-    · have := Set.mem_toFinset.mp (max'_mem S.toFinset S_nonempty)
-      exact this -- why???
-
-    · intro y y_gt_x
-      have : ¬ choose y k ≤ m := by
-        by_contra hc
-        have : y ∈ S.toFinset := Set.mem_toFinset.mpr hc
-        have : y ≤ x := le_max' S.toFinset y this
-        have : y < y := Nat.lt_of_le_of_lt this y_gt_x
-        exact (lt_self_iff_false y).mp this
-
-      exact gt_of_not_le this
+theorem Icc_succ_eq_union {a b : ℕ} (h : a ≤ b):  Icc a b.succ = Icc a b ∪ { b.succ } := by
+  ext x
+  by_cases x_eq_b_succ : x = b.succ
+  all_goals simp [x_eq_b_succ]
+  · simp_all [le_add_right_of_le]
+  · intro _; constructor
+    all_goals simp_all [le_add_right_of_le, le_of_lt_succ, lt_of_le_of_ne]
 
 lemma cascade {m k : ℕ} (one_le_m : 1 ≤ m) (one_le_k : 1 ≤ k) :
-    ∃ s, ∃ a : ℕ → ℕ, m = ∑ i ∈ Icc s k, (a i).choose i ∧ 1 ≤ s ∧ s ≤ k := by
+    ∃ s ≤ k, ∃ a : Fin s → ℕ, m = ∑ i, choose (a i) (k - i)
+    ∧ (∀ i, k - s ≤ a i) ∧ StrictMono a := by
 
+  -- If 1 ≤ m
   induction' one_le_k with k one_le_k ih generalizing m
 
   -- Inductive start
-  · use 1, (fun _ => m)
-    simp [sum_attach]
+  · use 1; simp
+    use m; simp_all [StrictMono]
 
   -- Inductive step
-  · obtain ⟨x, x_choose_k_le_m, x_max⟩ := exists_max_choose_le one_le_m (Nat.le_add_left 1 k)
+  · set S := {i : Fin m | choose i (k + 1) ≤ m}.toFinset with S_def
 
-    by_cases m_eq_x : x.choose (k + 1) = m
+    have zero_in_S : ⟨0, one_le_m⟩ ∈ S := by simp [S_def]
+    have S_nonempty : S.Nonempty := Set.nonempty_of_mem zero_in_S
 
-    -- Case 1: m = x.choose (k + 1)
-    · use k + 1, fun _ => x
-      simp [sum_attach, m_eq_x]
+    set x := max' S S_nonempty with x_def
 
-    -- Case 2: m < x.choose (k + 1)
-    · have x_choose_k_lt_m := lt_of_le_of_ne x_choose_k_le_m m_eq_x
-      let m' := m - x.choose (k + 1)
-      have one_le_m' : 1 ≤ m':= Nat.le_sub_of_add_le' x_choose_k_lt_m
+    have : choose x (k + 1) ≤ m := by sorry
 
-      obtain ⟨s, a', m'_eq_sum, one_le_s, s_le_k⟩ := ih one_le_m'
+    set m' := m - choose x (k + 1) with m'_def
 
-      set a := fun i => if i = k + 1 then x else a' i with a_def
+    have m_eq_m'_sum := (Nat.sub_eq_iff_eq_add this).mp m'_def.symm
 
-      use s, a
+    by_cases m'_eq_zero? : m' = 0
+
+    · use 1; simp
+      use fun _ => x
+      sorry
+
+    · obtain ⟨s', s'_le_k, a', m'_eq_sum, a'_lb, a'_mono⟩  := ih (one_le_iff_ne_zero.mpr m'_eq_zero? )
+
+      set s := s' + 1 with s_def
+
+      use s; simp [s'_le_k, s_def]
+
+      set a : Fin s → ℕ := by
+        intro i; set i' := (i : ℕ) with i'_def
+        by_cases i'_eq_zero : i' = 0
+        · exact (x : Nat)
+        · have i'_pred_lt_one : i' - 1 < s' := Nat.sub_lt_right_of_lt_add (one_le_iff_ne_zero.mpr i'_eq_zero) (i.isLt)
+          exact a' ⟨i' - 1, i'_pred_lt_one⟩
+        with a_def
+
+
+      use a
 
       constructor
-      · have icc_union : Icc s (k + 1) = (Icc s k) ∪ {k + 1} := by
-          ext x
-          by_cases x_eq_k_one : x = k+1
-          all_goals simp [x_eq_k_one]
-          · exact le_add_right_of_le s_le_k
-          · exact fun _ => ⟨fun a => le_of_lt_succ (Nat.lt_of_le_of_ne a x_eq_k_one), fun a => le_add_right_of_le a⟩
+      · have one_le_m' : 1 ≤ m' := one_le_iff_ne_zero.mpr m'_eq_zero?
 
-        have icc_disjoint : Disjoint (Icc s k) {k + 1} := by simp
+        calc m = choose x (k + 1) + ∑ i , (a' i).choose (k - i)
+                    := by simp [m'_eq_sum, Nat.add_comm, m_eq_m'_sum]
 
-        have xyz : ∀ i ∈ Icc s k, (a i).choose i = (a' i).choose i := by
-          intro i h
-          have : i ≠ k + 1:= fun hc => (ne_of_lt (mem_Icc.mp (hc ▸ h)).right) rfl
-          simp [this, a_def]
+             _ = choose x (k + 1) + ∑ i ∈ Ico 0 s', (a' ⟨i, by sorry⟩).choose (k - i)
+                    := by sorry
 
-        have foo : m = m' + x.choose (k + 1) := by exact (Nat.sub_eq_iff_eq_add x_choose_k_le_m).mp rfl
+             _ = choose x (k + 1) + ∑ i ∈ Icc 1 s', (a' ⟨i - 1, by sorry⟩).choose (k - (i - 1))
+                    := by sorry
 
-        have bar : a (k + 1) = x := by exact if_pos rfl
+             _ = ∑ i ∈ Icc 0 0, choose x (k + 1 - i) + ∑ i ∈ Icc 1 s', (a' ⟨i - 1, by sorry⟩).choose (k + 1 - i)
+                    := by sorry
 
-        simp [icc_union, Finset.sum_union icc_disjoint, foo, bar, m'_eq_sum, sum_congr rfl xyz]
+             _ = ∑ i ∈ Icc 0 s', (a i).choose (k + 1 - i)
+                    := by sorry
 
-      · exact ⟨one_le_s, le_succ_of_le s_le_k⟩
+             _ = ∑ i, (a i).choose (k + 1 - i)
+                    := by sorry
+
+      · constructor
+        · intro i
+          by_cases i_eq_zero? : i = 0
+
+          · simp [i_eq_zero?, a_def]
+            sorry
+
+          · simp [i_eq_zero?, a_def, s_def, a'_lb, s'_le_k]
+            have one_le_i : 1 ≤ (i : ℕ) := one_le_iff_ne_zero.mpr (Fin.val_ne_zero_iff.mpr i_eq_zero?)
+            have i_min_1_lt_s : (i : ℕ) - 1 < s' := Nat.sub_lt_right_of_lt_add one_le_i (i.isLt)
+            exact le_add_of_sub_le (a'_lb ⟨i - 1, i_min_1_lt_s⟩)
+
+
+        · intro i j h
+          by_cases i_eq_zero? : i = 0
+          · sorry
+
+          · have j_ne_zero : j ≠ 0 := by sorry
+
+            simp [a_def, i_eq_zero?, j_ne_zero]
+
+            have : (⟨i -1 , sorry⟩ : Fin s') < (⟨j - 1, sorry⟩ : Fin s') := by sorry
+
+            exact a'_mono this
